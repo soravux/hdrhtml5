@@ -8,9 +8,6 @@
     <!-- <script src="https://ajax.googleapis.com/ajax/libs/jqueryui/1.11.4/jquery-ui.min.js"></script> -->
 </head>
 <body>
-    <!-- Slider Drag -->
-
-    <div id="slider" style=""></div><br/>
 
 <select id="hdr_select">
     <option value="lin">Linear</option>
@@ -19,8 +16,9 @@
 </select>
 <label><input type="checkbox" id="rmz" value="1" checked="checked"/>Remove zeros from LDR histogram</label>
 <br/>
+<div id="slider" style="width:580px;"></div><br/>
 
-<div style="width:1000px;">
+<div style="width:850px;">
 <canvas id="histogramhdr" width="580" height="60" style="border:1px solid #d3d3d3; vertical-align: top;">
 Your browser does not support the HTML5 canvas tag.</canvas>
 <canvas id="imageCanvas" width="580" height="580" style="border:1px solid #d3d3d3;">
@@ -55,7 +53,7 @@ function linear(src, dst, min, max) {
     var range = max - min;
     for (i = 0; i < src.length; i++) {
         if (i % 4 == 3) { dst[i] = 255; continue; } // Do not modify alpha
-        v = Math.clip((src[i] - min) / range, 0, range);
+        v = Math.clip((src[i] - min) / range, 0, 1);
         dst[i] = Math.clip(v * 255, 0, 255);
     }
 }
@@ -64,7 +62,7 @@ function gamma20(src, dst, min, max) {
     var range = max - min;
     for (i = 0; i < src.length; i++) {
         if (i % 4 == 3) { dst[i] = 255; continue; } // Do not modify alpha
-        v = src[i] - min;
+        v = Math.clip((src[i] - min) / range, 0, 1);
         dst[i] = Math.clip(255 * Math.pow(v, 1/2.0), 0, 255);
     }
 }
@@ -73,7 +71,7 @@ function reinhart2002(src, dst, min, max) {
     for (i = 0; i < src.length; i++) {
         if (i % 4 == 3) { dst[i] = 255; continue; } // Do not modify alpha
         v = src[i];
-        dst[i] = Math.clip((v / (1 + v)) * 255, 0, 255);
+        dst[i] = Math.clip((v / (1 + v)) * 700, 0, 255);
     }
 }
 
@@ -85,16 +83,19 @@ function array256(default_value) {
 }
 
 function refreshHDRHistogram() {
-    var bin_size = Math.round((max - min) / 256);
-    var rvals = array256(0);
-    var gvals = array256(0);
-    var bvals = array256(0);
-    
+    var min_safe = Math.floor(log10(Math.max(min, 1e-8)));
+    var max_val = Math.ceil(log10(max - 1));
+    var bin_size = (max_val - min_safe) / cHisthdr.width;
+    var rvals = [], gvals = [], bvals = [];
+    for (var i=0; i<cHisthdr.width; i++) { rvals[i] = 0; }
+    for (var i=0; i<cHisthdr.width; i++) { gvals[i] = 0; }
+    for (var i=0; i<cHisthdr.width; i++) { bvals[i] = 0; }
+
     // Taken from here: http://billmill.org/the_histogram.html
     for (i = 0; i < targetData.length; i+=4) {
-        rvals[Math.round((targetData[i + 0] - min) / bin_size)]++;
-        gvals[Math.round((targetData[i + 1] - min) / bin_size)]++;
-        bvals[Math.round((targetData[i + 2] - min) / bin_size)]++;
+        rvals[Math.round((log10(targetData[i + 0]) - min_safe) / bin_size)]++;
+        gvals[Math.round((log10(targetData[i + 1]) - min_safe) / bin_size)]++;
+        bvals[Math.round((log10(targetData[i + 2]) - min_safe) / bin_size)]++;
     }
     //get a reference to the canvas to draw on
     var rmax = Math.max.apply(null, rvals);
@@ -102,7 +103,7 @@ function refreshHDRHistogram() {
     var gmax = Math.max.apply(null, gvals);
 
     // Clear canvas
-    ctxHisthdr.clearRect(0, 0, cHistldr.width, cHistldr.height);
+    ctxHisthdr.clearRect(0, 0, cHisthdr.width, cHisthdr.height);
 
     function colorbars(max, vals, color, y) {
         ctxHisthdr.fillStyle = color;
@@ -154,12 +155,12 @@ function refreshLDRHistogram() {
 function displayImage() {
     var imgData = ctx.getImageData(0, 0, 580, 580);
     var values = $('#slider').slider("values");
-    var sliderMinVal = Math.pow(10, values[0] / 100. * log10((max - min))) - 1 + min;
-    var sliderMaxVal = Math.pow(10, values[1] / 100. * log10((max - min))) - 0 + min;
+    var min_safe = Math.max(min, 1e-8);
+    var sliderMinVal = Math.pow(10, log10(min_safe) + values[0] / 100. * (log10((max - 1) / min_safe)));
+    var sliderMaxVal = Math.pow(10, log10(min_safe) + values[1] / 100. * (log10((max - 1) / min_safe)));
     var sliderRange = sliderMaxVal - sliderMinVal;
     console.log(min, sliderMinVal);
     console.log(max, sliderMaxVal);
-    var v;
     var hdr_opt = $("#hdr_select option:selected").val();
     if (hdr_opt == "lin") {
         linear(targetData, imgData.data, sliderMinVal, sliderMaxVal);
@@ -176,6 +177,7 @@ $(function(){
     // TODO: If max is < 1, max will be 1 because of data.
     //       Likewise for min
     for (i = 0; i < targetData.length; i++) {
+        if (targetData[i] < 0) { targetData[i] = 0; } // set negative values to zero
         if (targetData[i] < min) { min = targetData[i]; }
         if (targetData[i] > max) { max = targetData[i]; }
     }
