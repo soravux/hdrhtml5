@@ -14,7 +14,7 @@
     <option value="gamma20">Gamma 2.0</option>
     <option value="reinhart2002">Reinhart 2002</option>
 </select>
-<label><input type="checkbox" id="rmz" value="1" checked="checked"/>Remove zeros from LDR histogram</label>
+<label><input type="checkbox" id="rmz" value="1" checked="checked"/>Remove zeros from histograms</label>
 <br/>
 <div id="slider" style="width:580px;"></div><br/>
 
@@ -38,6 +38,7 @@ var c = document.getElementById("imageCanvas");
 var ctx = c.getContext("2d");
 
 var min = 1.7976931348623157E+10308; // Infinity
+var min_nonzero = 1.7976931348623157E+10308; // Infinity
 var max = -1.7976931348623157E+10308; // -Infinity
 
 
@@ -51,17 +52,17 @@ function log10(val) {
 
 function linear(src, dst, min, max) {
     var range = max - min;
-    for (i = 0; i < src.length; i++) {
-        if (i % 4 == 3) { dst[i] = 255; continue; } // Do not modify alpha
-        v = Math.clip((src[i] - min) / range, 0, 1);
-        dst[i] = Math.clip(v * 255, 0, 255);
+    for (i = 0; i < src.length; i+=4) {
+        dst[i+0] = Math.clip((src[i+0] - min) / range, 0, 255);
+        dst[i+1] = Math.clip((src[i+1] - min) / range, 0, 255);
+        dst[i+2] = Math.clip((src[i+2] - min) / range, 0, 255);
+        dst[i+3] = 255;
     }
 }
 
 function gamma20(src, dst, min, max) {
     var range = max - min;
     for (i = 0; i < src.length; i++) {
-        if (i % 4 == 3) { dst[i] = 255; continue; } // Do not modify alpha
         v = Math.clip((src[i] - min) / range, 0, 1);
         dst[i] = Math.clip(255 * Math.pow(v, 1/2.0), 0, 255);
     }
@@ -69,7 +70,6 @@ function gamma20(src, dst, min, max) {
 
 function reinhart2002(src, dst, min, max) {
     for (i = 0; i < src.length; i++) {
-        if (i % 4 == 3) { dst[i] = 255; continue; } // Do not modify alpha
         v = src[i];
         dst[i] = Math.clip((v / (1 + v)) * 700, 0, 255);
     }
@@ -83,8 +83,8 @@ function array256(default_value) {
 }
 
 function refreshHDRHistogram() {
-    var min_safe = Math.floor(log10(Math.max(min, 1e-8)));
-    var max_val = Math.ceil(log10(max - 1));
+    var min_safe = log10(Math.max(min_nonzero, 1e-8));
+    var max_val = log10(max);
     var bin_size = (max_val - min_safe) / cHisthdr.width;
     var rvals = [], gvals = [], bvals = [];
     for (var i=0; i<cHisthdr.width; i++) { rvals[i] = 0; }
@@ -93,9 +93,14 @@ function refreshHDRHistogram() {
 
     // Taken from here: http://billmill.org/the_histogram.html
     for (i = 0; i < targetData.length; i+=4) {
-        rvals[Math.round((log10(targetData[i + 0]) - min_safe) / bin_size)]++;
-        gvals[Math.round((log10(targetData[i + 1]) - min_safe) / bin_size)]++;
-        bvals[Math.round((log10(targetData[i + 2]) - min_safe) / bin_size)]++;
+        rvals[Math.clip(Math.round((log10(targetData[i + 0]) - min_safe) / bin_size), 0, cHisthdr.width)]++;
+        gvals[Math.clip(Math.round((log10(targetData[i + 1]) - min_safe) / bin_size), 0, cHisthdr.width)]++;
+        bvals[Math.clip(Math.round((log10(targetData[i + 2]) - min_safe) / bin_size), 0, cHisthdr.width)]++;
+    }
+    if ($("#rmz").is(':checked')) {
+        rvals[0] = 0;
+        gvals[0] = 0;
+        bvals[0] = 0;
     }
     //get a reference to the canvas to draw on
     var rmax = Math.max.apply(null, rvals);
@@ -105,10 +110,10 @@ function refreshHDRHistogram() {
     // Clear canvas
     ctxHisthdr.clearRect(0, 0, cHisthdr.width, cHisthdr.height);
 
-    function colorbars(max, vals, color, y) {
+    function colorbars(max_c, vals, color, y) {
         ctxHisthdr.fillStyle = color;
         jQuery.each(vals, function(i,x) {
-            var pct = (vals[i] / max) * 20;
+            var pct = (vals[i] / max_c) * 20;
             ctxHisthdr.fillRect(i, y, 1, -Math.round(pct));
         });
     }
@@ -155,9 +160,9 @@ function refreshLDRHistogram() {
 function displayImage() {
     var imgData = ctx.getImageData(0, 0, 580, 580);
     var values = $('#slider').slider("values");
-    var min_safe = Math.max(min, 1e-8);
-    var sliderMinVal = Math.pow(10, log10(min_safe) + values[0] / 100. * (log10((max - 1) / min_safe)));
-    var sliderMaxVal = Math.pow(10, log10(min_safe) + values[1] / 100. * (log10((max - 1) / min_safe)));
+    var min_safe = Math.max(min_nonzero, 1e-8);
+    var sliderMinVal = Math.pow(10, log10(min_safe) + values[0] / 100. * (log10(max / min_safe)));
+    var sliderMaxVal = Math.pow(10, log10(min_safe) + values[1] / 100. * (log10(max / min_safe)));
     var sliderRange = sliderMaxVal - sliderMinVal;
     console.log(min, sliderMinVal);
     console.log(max, sliderMaxVal);
@@ -177,8 +182,10 @@ $(function(){
     // TODO: If max is < 1, max will be 1 because of data.
     //       Likewise for min
     for (i = 0; i < targetData.length; i++) {
+        if (i % 4 == 3) { targetData[i] = 255; continue } // Set alpha to 255
         if (targetData[i] < 0) { targetData[i] = 0; } // set negative values to zero
         if (targetData[i] < min) { min = targetData[i]; }
+        if (targetData[i] < min_nonzero && targetData[i] > 0) { min_nonzero = targetData[i]; }
         if (targetData[i] > max) { max = targetData[i]; }
     }
 
@@ -204,6 +211,7 @@ $(function(){
 
     $( "#rmz" ).change(function() {
         refreshLDRHistogram();
+        refreshHDRHistogram();
     });    
 
     displayImage();
