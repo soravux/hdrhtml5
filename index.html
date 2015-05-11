@@ -173,10 +173,7 @@ function displayImage() {
     console.log(max, sliderMaxVal);
     var hdr_opt = $("#hdr_select option:selected").val();
     if (hdr_opt == "lin") {
-        var blub = linear(targetData, imgData.data, sliderMinVal, sliderMaxVal);
-        for (i=0; i < blub.length; i++) {
-            imgData.data[i] = blub[i];
-        }
+        linear(targetData, imgData.data, sliderMinVal, sliderMaxVal);
     } else if (hdr_opt == "gamma20") {
         gamma20(targetData, imgData.data, sliderMinVal, sliderMaxVal);
     } else if (hdr_opt == "reinhart2002") {
