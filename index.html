@@ -74,7 +74,6 @@ function linear(src, dst, min, max) {
     C_linear(dataHeap.byteOffset, dataOutHeap.byteOffset, src.length, min, max);
 
     dst = Array.prototype.slice.call(new Float32Array(dataOutHeap.buffer, dataOutHeap.byteOffset, dataOut.length));
-    document.write(dst[0] + " / " + dst[1654])
     Module._free(dataHeap.byteOffset);
     Module._free(dataOutHeap.byteOffset);
     /*var range = max - min;
@@ -197,7 +196,10 @@ function displayImage() {
     console.log(max, sliderMaxVal);
     var hdr_opt = $("#hdr_select option:selected").val();
     if (hdr_opt == "lin") {
-        imgData.data = linear(targetData, imgData.data, sliderMinVal, sliderMaxVal);
+        var blub = linear(targetData, imgData.data, sliderMinVal, sliderMaxVal);
+        for (i=0; i < blub.length; i++) {
+            imgData.data[i] = blub[i];
+        }
     } else if (hdr_opt == "gamma20") {
         gamma20(targetData, imgData.data, sliderMinVal, sliderMaxVal);
     } else if (hdr_opt == "reinhart2002") {
