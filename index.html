@@ -53,25 +53,29 @@ function log10(val) {
 function linear(src, dst, min, max) {
     var range = max - min;
     for (i = 0; i < src.length; i+=4) {
-        dst[i+0] = Math.clip((src[i+0] - min) / range, 0, 255);
-        dst[i+1] = Math.clip((src[i+1] - min) / range, 0, 255);
-        dst[i+2] = Math.clip((src[i+2] - min) / range, 0, 255);
+        dst[i+0] = Math.clip((src[i+0] - min) / range * 255, 0, 255);
+        dst[i+1] = Math.clip((src[i+1] - min) / range * 255, 0, 255);
+        dst[i+2] = Math.clip((src[i+2] - min) / range * 255, 0, 255);
         dst[i+3] = 255;
     }
 }
 
 function gamma20(src, dst, min, max) {
     var range = max - min;
-    for (i = 0; i < src.length; i++) {
-        v = Math.clip((src[i] - min) / range, 0, 1);
-        dst[i] = Math.clip(255 * Math.pow(v, 1/2.0), 0, 255);
+    for (i = 0; i < src.length; i+=4) {
+        dst[i+0] = Math.clip(255 * Math.pow((src[i+0] - min) / range, 1/2.0), 0, 255);
+        dst[i+1] = Math.clip(255 * Math.pow((src[i+1] - min) / range, 1/2.0), 0, 255);
+        dst[i+2] = Math.clip(255 * Math.pow((src[i+2] - min) / range, 1/2.0), 0, 255);
+        dst[i+3] = 255;
     }
 }
 
 function reinhart2002(src, dst, min, max) {
-    for (i = 0; i < src.length; i++) {
-        v = src[i];
-        dst[i] = Math.clip((v / (1 + v)) * 700, 0, 255);
+    for (i = 0; i < src.length; i+=4) {
+        dst[i+0] = Math.clip((src[i+0] / (1 + src[i+0])) * 700, 0, 255);
+        dst[i+1] = Math.clip((src[i+1] / (1 + src[i+1])) * 700, 0, 255);
+        dst[i+2] = Math.clip((src[i+2] / (1 + src[i+2])) * 700, 0, 255);
+        dst[i+3] = 255;
     }
 }
 
@@ -124,6 +128,7 @@ function refreshHDRHistogram() {
 }
 
 function refreshLDRHistogram() {
+    return;
     var imgData = ctx.getImageData(0, 0, 580, 580);
     var rvals = array256(0);
     var gvals = array256(0);
