@@ -210,8 +210,6 @@ function displayImage() {
 }
 
 $(function(){
-    // TODO: If max is < 1, max will be 1 because of data.
-    //       Likewise for min
     for (i = 0; i < targetData.length; i++) {
         if (i % 4 == 3) { targetData[i] = 255; continue } // Set alpha to 255
         if (targetData[i] < 0) { targetData[i] = 0; } // set negative values to zero
