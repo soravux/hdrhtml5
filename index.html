@@ -1,11 +1,13 @@
 <!DOCTYPE html>
 <html>
+<meta charset="utf-8"/>
 <head>
     <script type="text/javascript" src="https://ajax.googleapis.com/ajax/libs/jquery/1.6.1/jquery.min.js"></script>
     <!-- <script src="https://ajax.googleapis.com/ajax/libs/jquery/2.1.4/jquery.min.js"></script> -->
     <script type="text/javascript" src="http://pastebin.com/raw.php?i=12fqKKBp"></script>
     <link rel="stylesheet" href="https://ajax.googleapis.com/ajax/libs/jqueryui/1.11.4/themes/smoothness/jquery-ui.css">
     <!-- <script src="https://ajax.googleapis.com/ajax/libs/jqueryui/1.11.4/jquery-ui.min.js"></script> -->
+    <script src="./js/tinyexr.js"></script>
 </head>
 <body>
 
@@ -27,8 +29,79 @@ Your browser does not support the HTML5 canvas tag.</canvas>
 Your browser does not support the HTML5 canvas tag.</canvas>
 </div>
 
-<script src="targetData.js"></script>
 <script type="text/javascript">
+function loadData(evnt) {
+    if (request.readyState != 4) { return; }
+    if (request.status != 200) { console.log('Could not load file!'); return; }
+
+    var aBuffer = request.response;
+    var data = new Uint8Array(aBuffer);
+    //console.log(data.length)
+
+    ParseEXRHeaderFromMemory = cwrap(
+      'ParseEXRHeaderFromMemory', 'number', ['number', 'number', 'number']
+    );
+
+    LoadEXRFromMemory = cwrap(
+      'LoadEXRFromMemory', 'number', ['number', 'number', 'string']
+    );
+
+    var widthPtr = _malloc(4);
+    var widthHeap = new Uint8Array(HEAPU8.buffer, widthPtr, 4);
+    var heightPtr = _malloc(4);
+    var heightHeap = new Uint8Array(HEAPU8.buffer, heightPtr, 4);
+    var ptr = _malloc(data.length)
+    var dataHeap = new Uint8Array(HEAPU8.buffer, ptr, data.length);
+    dataHeap.set(new Uint8Array(data.buffer))
+
+    var ret  = ParseEXRHeaderFromMemory(widthHeap.byteOffset, heightHeap.byteOffset, dataHeap.byteOffset);
+    //console.log(ret)
+
+    width = (new Int32Array(widthHeap.buffer, widthHeap.byteOffset, 1))[0];
+    height = (new Int32Array(heightHeap.buffer, heightHeap.byteOffset, 1))[0];
+    //console.log(width, height)
+
+    var imgDataLen = width * height * 4 * 4;
+    var img = _malloc(imgDataLen)
+    targetData = new Float32Array(HEAPU8.buffer, img, imgDataLen/4);
+    var res = LoadEXRFromMemory(targetData.byteOffset, dataHeap.byteOffset, null)
+
+    for (i = 0; i < targetData.length; i++) {
+        if (i % 4 == 3) { targetData[i] = 255; continue } // Set alpha to 255
+        if (targetData[i] < 0) { targetData[i] = 0; } // set negative values to zero
+        if (targetData[i] < min) { min = targetData[i]; }
+        if (targetData[i] < min_nonzero && targetData[i] > 0) { min_nonzero = targetData[i]; }
+        if (targetData[i] > max) { max = targetData[i]; }
+    }
+
+    $('#slider').slider({
+        animate: true,
+        range: true,
+        rangeDrag: true,
+        values: [30, 70],
+        change: function(event, ui) {
+            displayImage();
+        }
+    });
+
+    $( "#hdr_select" ).change(function() {
+        var hdr_opt = $("#hdr_select option:selected").val();
+        if (hdr_opt == "reinhart2002") {
+            $("#slider").slider("option", "values", [0, 100]);
+        } else {
+            $("#slider").slider("option", "values", [30, 70]);
+        }
+        displayImage();
+    });
+
+    $( "#rmz" ).change(function() {
+        refreshLDRHistogram();
+        refreshHDRHistogram();
+    });    
+
+    displayImage();
+    refreshHDRHistogram();
+}
 
 var cHisthdr = document.getElementById("histogramhdr");
 var ctxHisthdr = cHisthdr.getContext("2d");
@@ -128,8 +201,8 @@ function refreshHDRHistogram() {
 }
 
 function refreshLDRHistogram() {
-    return;
-    var imgData = ctx.getImageData(0, 0, 580, 580);
+    //return;
+    var imgData = ctx.getImageData(0, 0, width, height);
     var rvals = array256(0);
     var gvals = array256(0);
     var bvals = array256(0);
@@ -163,14 +236,14 @@ function refreshLDRHistogram() {
 }
 
 function displayImage() {
-    var imgData = ctx.getImageData(0, 0, 580, 580);
+    var imgData = ctx.getImageData(0, 0, width, height);
     var values = $('#slider').slider("values");
     var min_safe = Math.max(min_nonzero, 1e-8);
     var sliderMinVal = Math.pow(10, log10(min_safe) + values[0] / 100. * (log10(max / min_safe)));
     var sliderMaxVal = Math.pow(10, log10(min_safe) + values[1] / 100. * (log10(max / min_safe)));
     var sliderRange = sliderMaxVal - sliderMinVal;
-    console.log(min, sliderMinVal);
-    console.log(max, sliderMaxVal);
+    //console.log(min, sliderMinVal);
+    //console.log(max, sliderMaxVal);
     var hdr_opt = $("#hdr_select option:selected").val();
     if (hdr_opt == "lin") {
         linear(targetData, imgData.data, sliderMinVal, sliderMaxVal);
@@ -183,42 +256,12 @@ function displayImage() {
     refreshLDRHistogram();
 }
 
+var request = new XMLHttpRequest();
 $(function(){
-    for (i = 0; i < targetData.length; i++) {
-        if (i % 4 == 3) { targetData[i] = 255; continue } // Set alpha to 255
-        if (targetData[i] < 0) { targetData[i] = 0; } // set negative values to zero
-        if (targetData[i] < min) { min = targetData[i]; }
-        if (targetData[i] < min_nonzero && targetData[i] > 0) { min_nonzero = targetData[i]; }
-        if (targetData[i] > max) { max = targetData[i]; }
-    }
-
-    $('#slider').slider({
-        animate: true,
-        range: true,
-        rangeDrag: true,
-        values: [30, 70],
-        change: function(event, ui) {
-            displayImage();
-        }
-    });
-
-    $( "#hdr_select" ).change(function() {
-        var hdr_opt = $("#hdr_select option:selected").val();
-        if (hdr_opt == "reinhart2002") {
-            $("#slider").slider("option", "values", [0, 100]);
-        } else {
-            $("#slider").slider("option", "values", [30, 70]);
-        }
-        displayImage();
-    });
-
-    $( "#rmz" ).change(function() {
-        refreshLDRHistogram();
-        refreshHDRHistogram();
-    });    
-
-    displayImage();
-    refreshHDRHistogram();
+    request.open('GET', 'asakusa.exr', true);
+    request.responseType = 'arraybuffer';
+    request.onreadystatechange = loadData;
+    request.send(null);
 });
 </script>
 
